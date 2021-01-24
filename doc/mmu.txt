@@ -1,0 +1,108 @@
+1. 地址翻译总体视图
+   对于3级页表，9 + 9 + 9 + 12 = 39'bits VA
+                                                                                  level-3 table
+
+                                                                                +-----------+
+                                                                                |           |
+                                                level-2 table                   +-----------+
+                                                                                |           |
+                                               +---------------+         2MB    +-----------+       4KB
+                                               |   D Block     +------>region   |   D Page  +----->page
+                    leve-1 table               +---------------+                +-----------+
+                                               |               |                |           |
+                  +------------+        1GB    +---------------+                |           |
+                  |  D Block   +-----> region  |   D Table     +--------------->+-----------+
+                  +------------+               +---------------+        |
+                  |            |               |               |        |
+                  +------------+               |               |        |
+                  |  D Table   +-------------->+---------------+        |
+                  +------------+       |                                |
+                  |            |       |                                |
++---------+       |            |       |                                |
+|  TTBR   +------>+------------+       |                                |
++---------+   |                        |                                |
+              |                        |                                |
+              |                        |                                |
+              v                        v                                v
+          indexed by VA[38:30]    indexed by VA[29:21]            indexed by VA[20:12]
+
+从上图看出，配置完成一个页表，需要控制颗粒度，ARMV8支持4K,16K,64K，本项目选取4K
+需要知道每个descriptor的格式，以及如何配置上想要的desctriptor，包含读写，执行的属性
+即可完成虚拟地址转换
+
+1.0 译码过程
+    BaseAddr，TTBR_ELx的BADDR字段
+    PAMax 支持的PA宽度
+    TnSZ Translation Table Size
+    TCR_EL1.TOSZ  TCR_EL1.T1SZ VTCR_EL2.T0SZ VSTCR_EL2.T0SZ
+    TCR_EL2.T0SZ TCR_EL2.T1SZ VSTCR_EL2.T0SZ TCR_EL3.T0SZ
+    SL0 Initial lookup level for Translation 从第几级开始
+
+1.1 Translation table format desctriptor 页表描述符
+    一个desctriptor的作用:
+    . 是否是一个invalid entry
+    . 指向下一个的table entry
+    . 一个block entry，表示相应block的memory属性
+    BIT[1] 表示相应的type, 0-Block, 1-Table
+    BIT[0]表示是否是invalid
+    Block-desctriptor: 4K粒度
+        LEVEL1的block，Bit[47:30]表示1G Memory的BIT[47:30]位
+        LEVEL2的block, Bit[47:21] 表示2M Memory的BIT[47:21]位
+    Table-desctriptor: 4K粒度
+                     63  62 61  60  59  58                   51
+                    +---+-----+---+---+-----------------------+
+                    |   |     |   |   |                       |
+                    +-+-+--+--+-+-+-+-+-----------------------+
+                      |    |    |   |
+                      |    |    |   |
+        NSTable <-----+    |    |   |
+                           |    |   |
+        APTable <----------+    |   |
+                                |   |
+        UXN     <---------------+   |
+                                    |
+        PXN     <-------------------+
+        BIT[47:12] 是下一级页表的起始地址的BIT[47:12]位
+        BIT[63] NSTable
+        BIT[62:61] APTable
+        BIT[60] UXN
+        BIT[59] PXN
+    LEVEL-3 desctriptor or PAGE desctriptor: 4K粒度
+        BIT[47:12] 表示一个PAGE的地址
+    
+    对于Page或者Block desctriptor:
+                  63  62 61  60  59  58    55  54  53  52  51
+                 +---+-------------+---------+---+---+---+---+
+                 |   |  PBHA       |         |   |   |   |   |
+                 +-+-+-------------+----+----+-+-+-+-+-+-+-+-+
+                   |                    |      |   |   |   |
+                   |                    |      |   |   |   |
+     Ignore  <-----+                    |      |   |   |   |
+                      Reserved   <------+      |   |   |   |
+                                               |   |   |   |
+                      UXN or XN  <-------------+   |   |   |
+                                                   |   |   |
+                            PXN  <-----------------+   |   |
+                                                       |   |
+                      Contiguous <---------------------+   |
+                                                           |
+                            DBM  <-------------------------+
+
+
+
+
+1.2 关键寄存器
+ TTBR的选择
+    对于stage1, TTBR0_ELx 用于进程特有，在上下文切换的时候更新，TTBR1_ELx一般不会变化
+TTBR0_ELx，EL1,2,3都有，TTBR1_ELx，在EL3中没有;
+
+
+1.2 TCR(Translation Control Register) 地址翻译控制寄存器
+    对于使用TTBR0_ELx来说TCR(SH0,ORGN0,IPGN0)控制了相应的属性
+    对于TTBR1_ELx来说TCR(SH1,ORGN1,IRGN1)控制了响应的属性
+    TCR_ELx的TG0,TG1分别控制了翻译的粒度
+    对于Stage2来说，则由TCR改为VTCR(NEL2),VSTCR(SEL2)
+
+
+
+

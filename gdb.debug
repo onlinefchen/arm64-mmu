@@ -1,0 +1,6 @@
+set disassemble-next-line on
+set confirm off
+add-symbol-file Kopernik.elf 0x40000000
+target remote tcp::1234
+set arch aarch64
+layout regs
