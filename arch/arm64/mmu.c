@@ -2,19 +2,15 @@
 #include <arch.h>
 #include <types.h>
 
-static uint64_t kernel_xlat_tables[CONFIG_MAX_XLAT_TABLES * Ln_XLAT_NUM_ENTRIES]
+static uint64_t xlat_tables[CONFIG_MAX_XLAT_TABLES][Ln_XLAT_NUM_ENTRIES]
 		__aligned(Ln_XLAT_NUM_ENTRIES * sizeof(uint64_t));
 
-static struct arm_mmu_ptables kernel_ptables = {
-	.xlat_tables = kernel_xlat_tables,
-};
-
 /* Translation table control register settings */
-static unsigned long get_tcr(int el)
+static uint64_t get_tcr(int el)
 {
-	unsigned long tcr;
-	unsigned long va_bits = CONFIG_ARM64_VA_BITS;
-	unsigned long tcr_ps_bits;
+	uint64_t tcr;
+	uint64_t va_bits = CONFIG_ARM64_VA_BITS;
+	uint64_t tcr_ps_bits;
 
 	tcr_ps_bits = TCR_PS_BITS;
 
@@ -26,7 +22,7 @@ static unsigned long get_tcr(int el)
 		 */
 		tcr |= TCR_EPD1_DISABLE;
 	} else
-		tcr = (tcr_ps_bits << TCR_EL2_PS_SHIFT);
+		tcr = (tcr_ps_bits << TCR_EL3_PS_SHIFT);
 
 	tcr |= TCR_T0SZ(va_bits);
 	/*
@@ -43,8 +39,7 @@ static int pte_desc_type(unsigned long *pte)
 	return *pte & PTE_DESC_TYPE_MASK;
 }
 
-static unsigned long *calculate_pte_index(struct arm_mmu_ptables *ptables,
-				     unsigned long addr, unsigned int level)
+static uint64_t *calculate_pte_index(uint64_t addr, int level)
 {
 	int base_level = BASE_XLAT_LEVEL;
 	unsigned long *pte;
@@ -52,7 +47,7 @@ static unsigned long *calculate_pte_index(struct arm_mmu_ptables *ptables,
 	unsigned int i;
 
 	/* Walk through all translation tables to find pte index */
-	pte = (unsigned long *)ptables->xlat_tables;
+	pte = (uint64_t *)xlat_tables;
 	for (i = base_level; i < XLAT_LEVEL_MAX; i++) {
 		idx = XLAT_TABLE_VA_IDX(addr, i);
 		pte += idx;
@@ -177,20 +172,18 @@ static void set_pte_block_desc(unsigned long *pte, unsigned long addr_pa,
 }
 
 /* Returns a new reallocated table */
-static unsigned long *new_prealloc_table(struct arm_mmu_ptables *ptables)
+static uint64_t *new_prealloc_table(void)
 {
-	ptables->next_table++;
+	static unsigned int table_idx = 1;
 
-	if(ptables->next_table >= CONFIG_MAX_XLAT_TABLES)
+	if(table_idx < CONFIG_MAX_XLAT_TABLES)
 		printf("Enough xlat tables not allocated");
 
-	return (unsigned long *)(&ptables->xlat_tables[ptables->next_table *
-			    Ln_XLAT_NUM_ENTRIES]);
+	return (uint64_t *)(xlat_tables[table_idx++]);
 }
 
 /* Splits a block into table with entries spanning the old block */
-static void split_pte_block_desc(struct arm_mmu_ptables *ptables, unsigned long *pte,
-				 unsigned long desc, unsigned int level)
+static void split_pte_block_desc(uint64_t *pte, uint64_t desc, int level)
 {
 	unsigned long old_block_desc = *pte;
 	unsigned long *new_table;
@@ -200,7 +193,7 @@ static void split_pte_block_desc(struct arm_mmu_ptables *ptables, unsigned long 
 
 	MMU_DEBUG("Splitting existing PTE %p(L%d)\n", pte, level);
 
-	new_table = new_prealloc_table(ptables);
+	new_table = new_prealloc_table();
 
 	for (i = 0; i < Ln_XLAT_NUM_ENTRIES; i++) {
 		new_table[i] = old_block_desc | (i << levelshift);
@@ -220,7 +213,6 @@ void add_map(const char *name,
 	unsigned long level_size;
 	unsigned long *new_table;
 	unsigned int level = BASE_XLAT_LEVEL;
-	struct arm_mmu_ptables *ptables = &kernel_ptables;
 
 	MMU_DEBUG("mmap [%s]: virt %lx phys %lx size %lx\n",
 		   name, virt, phys, size);
@@ -238,11 +230,12 @@ void add_map(const char *name,
 			 printf("max translation table level exceeded\n");
 
 		/* Locate PTE for given virtual address and page table level */
-		pte = calculate_pte_index(ptables, virt, level);
+		pte = calculate_pte_index(virt, level);
 		if(pte == NULL)
 			printf("pte not found\n");
 
 		level_size = 1ULL << LEVEL_TO_VA_SIZE_SHIFT(level);
+		printf("leve %d size %lx\n", level, level_size);
 
 		if (size >= level_size && !(virt & (level_size - 1))) {
 			/* Given range fits into level size,
@@ -256,7 +249,7 @@ void add_map(const char *name,
 			level = BASE_XLAT_LEVEL;
 		} else if (pte_desc_type(pte) == PTE_INVALID_DESC) {
 			/* Range doesn't fit, create subtable */
-			new_table = new_prealloc_table(ptables);
+			new_table = new_prealloc_table();
 			set_pte_table_desc(pte, new_table, level);
 			level++;
 		} else if (pte_desc_type(pte) == PTE_BLOCK_DESC) {
@@ -265,7 +258,7 @@ void add_map(const char *name,
 				return;
 
 			/* We need to split a new table */
-			split_pte_block_desc(ptables, pte, desc, level);
+			split_pte_block_desc(pte, desc, level);
 			level++;
 		} else if (pte_desc_type(pte) == PTE_TABLE_DESC)
 			level++;
@@ -278,25 +271,25 @@ void enable_mmu()
 	unsigned long val;
 
 	/* Set MAIR, TCR and TBBR registers */
-	__asm__ volatile("msr mair_el2, %0"
+	__asm__ volatile("msr mair_el3, %0"
 			:
 			: "r" (MEMORY_ATTRIBUTES)
 			: "memory", "cc");
-	__asm__ volatile("msr tcr_el2, %0"
+	__asm__ volatile("msr tcr_el3, %0"
 			:
 			: "r" (get_tcr(1))
 			: "memory", "cc");
-	__asm__ volatile("msr ttbr0_el2, %0"
+	__asm__ volatile("msr ttbr0_el3, %0"
 			:
-			: "r" ((unsigned long)kernel_ptables.xlat_tables)
+			: "r" ((uint64_t)xlat_tables)
 			: "memory", "cc");
 
 	/* Ensure these changes are seen before MMU is enabled */
 	__asm__ volatile("isb");
 	/* Enable the MMU and data cache */
-	__asm__ volatile("mrs %0, sctlr_el2" : "=r" (val));
+	__asm__ volatile("mrs %0, sctlr_el3" : "=r" (val));
 	printf("enable %s %d\n", __func__, __LINE__);
-	__asm__ volatile("msr sctlr_el2, %0"
+	__asm__ volatile("msr sctlr_el3, %0"
 			:
 			: "r" (val | SCTLR_M | SCTLR_C)
 			: "memory", "cc");
