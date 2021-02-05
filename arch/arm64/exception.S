@@ -49,7 +49,6 @@ SynchronousExceptionSPx:
 	adr     x0, debug_spx_str
         bl      uart_print /* asm print welcome message */
 	bl 	exception_handle
-	b .
 
 	.align	7
 IrqSPx:

@@ -13,7 +13,7 @@ static void dump_esr()
 	printf("  EC:  0x%llx", ESR_EC(esr));
 	printf("  IL:  0x%llx", ESR_IL(esr));
 	printf("  ISS: 0x%llx\n", ESR_ISS(esr));
-	printf("  ELR: 0x%llx\n", read_msr(elr_el3));
+	printf("  ELR: 0x%llx\n", read_msr(elr_el2));
 	switch (ESR_EC(esr)) {
 	case 0b000000: /* 0x00 */
 		printf("Unknown reason");
@@ -125,6 +125,7 @@ static void dump_esr()
 		printf("Unknown");
 	}
 	printf("\n");
+	asm volatile("b .");
 }
 
 int exception_handle()

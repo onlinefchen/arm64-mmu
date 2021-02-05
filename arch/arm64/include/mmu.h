@@ -6,6 +6,10 @@
 #define CONFIG_ARM64_VA_BITS 100
 #define CONFIG_MMU_PAGE_SIZE 0x1000
 #define CONFIG_MAX_XLAT_TABLES 32
+#define CONFIG_ARM64_PA_BITS   36
+#define NUM_BASE_LEVEL_ENTRIES  64
+#define XLAT_TABLE_ENTRIES  512
+#define XLAT_TABLE_BASE_LEVEL 1
 
 
 #define __aligned(x)	__attribute__((__aligned__(x)))

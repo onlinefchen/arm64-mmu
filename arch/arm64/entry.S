@@ -23,9 +23,9 @@ entry:
 	.word 	0
 
 real_entry:
-	mrs     x0, sctlr_el3
+	mrs     x0, sctlr_el2
 	bic     x0, x0, #SCTLR_EE
-	msr     sctlr_el3, x0
+	msr     sctlr_el2, x0
 	isb
 
 	bl 	uart_enable
@@ -35,16 +35,16 @@ real_entry:
 	/* exception handlers */
 	adrp 	x0, exceptions
 	add 	x0, x0, :lo12:exceptions
-	msr	vbar_el3, x0
+	msr	vbar_el2, x0
 
 	/* serror enable */
 	msr	daifclr, #DAIFSET_ABT
 
 	/* enable icache and alignment check */
 	mov	x1, #(SCTLR_I | SCTLR_A | SCTLR_SA)
-	mrs	x0, sctlr_el3
+	mrs	x0, sctlr_el2
 	orr	x0, x0, x1
-	msr	sctlr_el1, x0
+	msr	sctlr_el2, x0
 	isb
 
 	bl 	zero_bss

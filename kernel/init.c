@@ -23,5 +23,6 @@ int main()
 {
 	early_init();
 	data = data + 1023;
+	printf("end of main\n");
 	return 0;
 }
