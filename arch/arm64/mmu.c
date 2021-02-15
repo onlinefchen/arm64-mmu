@@ -7,10 +7,10 @@
 #include <types.h>
 
 static u64 base_xlat_table[NUM_BASE_LEVEL_ENTRIES]
-__aligned(NUM_BASE_LEVEL_ENTRIES * sizeof(u64));
+__aligned(0x1000);
 
 static u64 xlat_tables[CONFIG_MAX_XLAT_TABLES][XLAT_TABLE_ENTRIES]
-__aligned(XLAT_TABLE_ENTRIES * sizeof(u64));
+__aligned(0x1000);
 
 /* Translation table control register settings */
 static u64 get_tcr(int el)
@@ -249,7 +249,7 @@ void enable_mmu()
 			 : "memory", "cc");
 	__asm__ volatile("msr tcr_el2, %0"
 			 :
-			 : "r"(get_tcr(1))
+			 : "r"(get_tcr(2))
 			 : "memory", "cc");
 	__asm__ volatile("msr ttbr0_el2, %0"
 			 :
@@ -260,8 +260,8 @@ void enable_mmu()
 	isb();
 
 	/* Enable the MMU and data cache */
-	__asm__ volatile("mrs %0, sctlr_el1" : "=r"(val));
-	__asm__ volatile("msr sctlr_el1, %0"
+	__asm__ volatile("mrs %0, sctlr_el2" : "=r"(val));
+	__asm__ volatile("msr sctlr_el2, %0"
 			 :
 			 : "r"(val | SCTLR_M | SCTLR_C)
 			 : "memory", "cc");

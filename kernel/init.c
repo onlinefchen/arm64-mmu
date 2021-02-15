@@ -13,7 +13,8 @@ void early_init(void)
 	printf("img start %lx end %lx\n", image_start, image_end);
 	printf("%lx %lx\n", early_init, printf);
 	add_map("all",  image_start, image_start, image_end - image_start,
-		MT_NS | MT_NORMAL | MT_RW | MT_RW_AP_EL_HIGHER  | MT_P_EXECUTE | MT_U_EXECUTE_NEVER);
+		MT_NS | MT_NORMAL | MT_RW);
+	add_map("uart", 0x09000000, 0x09000000, 0x2000, MT_NS | MT_NORMAL |MT_RW);
 	printf("after map\n");
 	enable_mmu();
 	printf("after enable\n");
